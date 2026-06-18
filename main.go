@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/fawaz/gofetch/cmd"
@@ -48,6 +49,9 @@ func main() {
 
 	// Route "/api/scan" → reconnaissance engine
 	mux.HandleFunc("/api/scan", handleScan)
+
+	// Route "/api/trace" → network tracing benchmark engine
+	mux.HandleFunc("/api/trace", handleTrace)
 
 	// CRITICAL: bind to 0.0.0.0 (not localhost/127.0.0.1) so Render's
 	// health-check probes can reach the process from outside the container.
@@ -94,6 +98,54 @@ func handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(result); err != nil {
+		log.Printf("[gofetch] JSON encode error: %v", err)
+	}
+}
+
+// handleTrace is the HTTP handler for the /api/trace endpoint.
+// It benchmark runs the target over a requested count using httptrace.
+func handleTrace(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	target := strings.TrimSpace(r.URL.Query().Get("url"))
+	if target == "" {
+		target = strings.TrimSpace(r.URL.Query().Get("domain"))
+	}
+
+	if target == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "query parameter 'url' or 'domain' is required",
+		})
+		return
+	}
+
+	countStr := r.URL.Query().Get("count")
+	count := 3
+	if countStr != "" {
+		if val, err := strconv.Atoi(countStr); err == nil && val > 0 {
+			count = val
+		}
+	}
+
+	log.Printf("[gofetch] HTTP trace requested → %s (runs: %d, remote: %s)", target, count, r.RemoteAddr)
+
+	summary, err := scanner.TraceURL(target, count)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(summary); err != nil {
 		log.Printf("[gofetch] JSON encode error: %v", err)
 	}
 }

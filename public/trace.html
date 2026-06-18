@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gofetch — Latency Trace</title>
+  <meta name="description" content="gofetch SRE network latency trace benchmarking — DNS, TCP, TLS, TTFB, and Transfer rates." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          animation: {
+            'pulse-slow':  'pulse 3s ease-in-out infinite',
+            'fade-up':     'fadeUp .45s ease both',
+          },
+          keyframes: {
+            fadeUp:  { from: { opacity:'0', transform:'translateY(14px)' }, to: { opacity:'1', transform:'translateY(0)' } },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col justify-between">
+<div id="app" class="flex-1 flex flex-col">
+  <!-- Filled by JS -->
+  <div class="flex items-center justify-center min-h-screen">
+    <div class="text-slate-650 text-sm font-mono animate-pulse">Initialising…</div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   Boot
+   ═══════════════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', init);
+
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const target = (params.get('url') || params.get('domain'))?.trim();
+  const countVal = parseInt(params.get('count') || '3');
+
+  if (!target) {
+    renderForm(countVal);
+    return;
+  }
+
+  showLoading(target, countVal);
+
+  try {
+    const res = await fetch(`/api/trace?url=${encodeURIComponent(target)}&count=${countVal}`);
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+    renderResults(target, data);
+  } catch (err) {
+    showError(target, err.message);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Input Form Page (if no target is specified in query parameters)
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderForm(defaultCount) {
+  document.title = `Latency Trace Benchmark — gofetch`;
+
+  document.getElementById('app').innerHTML = `
+    ${navHTML('')}
+    <main class="max-w-xl mx-auto px-4 py-16 flex-1 flex flex-col justify-center w-full animate-fade-up">
+      <div class="text-center mb-10">
+        <div class="w-12 h-12 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+          </svg>
+        </div>
+        <h1 class="text-3xl font-extrabold text-slate-50 tracking-tight">Latency Trace</h1>
+        <p class="text-slate-400 text-sm mt-2">Precision HTTP connection benchmarking and diagnostic profiling.</p>
+      </div>
+
+      <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm shadow-xl">
+        <form onsubmit="executeBenchmark(event)" class="space-y-4">
+          <div>
+            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Target Destination</label>
+            <div class="flex items-center gap-3 bg-slate-950 border border-slate-700 rounded-xl px-4 focus-within:border-cyan-500/60 focus-within:ring-2 focus-within:ring-cyan-500/10 transition-all">
+              <span class="text-slate-600 font-mono text-sm">http(s)://</span>
+              <input
+                id="trace-target"
+                type="text"
+                placeholder="example.com"
+                value=""
+                class="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder:text-slate-650 text-sm font-mono py-3 min-w-0"
+                required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Iteration Runs</label>
+            <select
+              id="trace-runs"
+              class="w-full bg-slate-950 border border-slate-750 text-slate-100 rounded-xl px-4 py-3 text-sm outline-none font-mono focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/10 transition-all"
+            >
+              <option value="3" ${defaultCount === 3 ? 'selected' : ''}>3 runs (Fast audit)</option>
+              <option value="5" ${defaultCount === 5 ? 'selected' : ''}>5 runs (Recommended)</option>
+              <option value="10" ${defaultCount === 10 ? 'selected' : ''}>10 runs (Detailed stats)</option>
+            </select>
+          </div>
+
+          <button
+            type="submit"
+            class="w-full inline-flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-3 rounded-xl text-sm transition-all duration-200 hover:shadow-lg hover:shadow-cyan-500/20 active:translate-y-0"
+          >
+            Start Trace Benchmark
+          </button>
+        </form>
+      </div>
+    </main>
+    ${footerHTML()}`;
+}
+
+function executeBenchmark(e) {
+  e.preventDefault();
+  const target = document.getElementById('trace-target').value.trim();
+  const count = document.getElementById('trace-runs').value;
+  if (!target) return;
+  window.location.href = `/trace.html?url=${encodeURIComponent(target)}&count=${count}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Loading State Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
+function showLoading(target, count) {
+  document.title = `Benchmarking ${target} — gofetch`;
+
+  document.getElementById('app').innerHTML = `
+    ${navHTML(target)}
+    <!-- Loading Header -->
+    <div class="bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80 py-10 animate-pulse">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 bg-slate-900 border border-slate-800 rounded-2xl"></div>
+          <div class="space-y-2">
+            <div class="h-6 w-48 bg-slate-900 rounded-lg"></div>
+            <div class="h-3.5 w-32 bg-slate-900/60 rounded"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse-slow"></span>
+          <span class="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse-slow delay-100"></span>
+          <span class="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse-slow delay-200"></span>
+          <span id="loading-msg" class="text-sm text-slate-450 ml-2 font-mono">Running trace benchmark iteration 1/${count}…</span>
+        </div>
+      </div>
+    </div>
+    <!-- Loading skeleton cards -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        ${Array(6).fill('<div class="h-40 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>').join('')}
+      </div>
+    </main>`;
+
+  // Update loading messages during iterations
+  let i = 1;
+  window._loadTimer = setInterval(() => {
+    const el = document.getElementById('loading-msg');
+    if (el && i < count) {
+      i++;
+      el.textContent = `Running trace benchmark iteration ${i}/${count}…`;
+    }
+  }, 1200);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Results Presentation Dashboard
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderResults(target, s) {
+  clearInterval(window._loadTimer);
+  document.title = `${target} — Latency Trace Results`;
+
+  // Latency Evaluation Threshold Checkers
+  const checkStatus = (avgUs, limitMs) => {
+    const avgMs = avgUs / 1000.0;
+    if (avgMs === 0) return { label: 'N/A', class: 'text-slate-500 bg-slate-900/50 border-slate-800/40' };
+    if (avgMs > limitMs) return { label: 'Slow', class: 'text-yellow-400 bg-yellow-500/5 border-yellow-500/10' };
+    return { label: 'Optimal', class: 'text-emerald-400 bg-emerald-500/5 border-emerald-500/10' };
+  };
+
+  const renderCard = (title, stats, limitMs, icon) => {
+    const status = checkStatus(stats.Avg, limitMs);
+    return `
+    <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm shadow-xl flex flex-col justify-between space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="text-lg">${icon}</span>
+          <h3 class="text-sm font-bold text-slate-100">${title}</h3>
+        </div>
+        <span class="text-[10px] font-mono font-bold border rounded px-1.5 py-0.5 ${status.class}">${status.label}</span>
+      </div>
+
+      <!-- Min, Avg, Max details -->
+      <div class="grid grid-cols-3 gap-2 border-t border-b border-slate-850/50 py-3.5 my-2">
+        <div class="text-center">
+          <div class="text-[9px] text-slate-500 uppercase tracking-widest font-semibold">Min</div>
+          <div class="text-sm font-bold font-mono text-slate-300 mt-0.5">${fmtDur(stats.Min)}</div>
+        </div>
+        <div class="text-center border-x border-slate-850/50">
+          <div class="text-[9px] text-slate-500 uppercase tracking-widest font-semibold">Average</div>
+          <div class="text-base font-black font-mono text-cyan-400 mt-0.5">${fmtDur(stats.Avg)}</div>
+        </div>
+        <div class="text-center">
+          <div class="text-[9px] text-slate-500 uppercase tracking-widest font-semibold">Max</div>
+          <div class="text-sm font-bold font-mono text-slate-300 mt-0.5">${fmtDur(stats.Max)}</div>
+        </div>
+      </div>
+      <div class="text-[10px] text-slate-500 leading-snug">Average rating threshold limits established at <code class="font-mono text-slate-400">${limitMs}ms</code>.</div>
+    </div>`;
+  };
+
+  document.getElementById('app').innerHTML = `
+    ${navHTML(target)}
+    <!-- Hero Header -->
+    <div class="bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-cyan-500/5">
+              <svg class="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+              </svg>
+            </div>
+            <div>
+              <h1 class="text-2xl sm:text-3xl font-extrabold font-mono text-slate-50 tracking-tight">${esc(target)}</h1>
+              <p class="text-slate-500 text-sm mt-1">
+                <span class="text-slate-400 font-mono">Trace latency runs complete</span>
+                <span class="mx-2 text-slate-700">·</span>
+                <span class="text-slate-400 font-mono">${s.Count} iterations conducted</span>
+              </p>
+            </div>
+          </div>
+          <a href="/trace.html?url=${encodeURIComponent(target)}&count=${s.Count}"
+             class="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-slate-50 text-sm font-semibold px-4 py-2.5 rounded-xl transition-all">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+            Run again
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Latency metrics grid -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-up">
+        ${renderCard('DNS Lookup', s.DNSLookup, 100, '🌐')}
+        ${renderCard('TCP Connection', s.TCPConnection, 150, '🔌')}
+        ${renderCard('TLS Handshake', s.TLSHandshake, 200, '🔒')}
+        ${renderCard('Server Processing (TTFB)', s.ServerProcess, 400, '⚡')}
+        ${renderCard('Content Transfer', s.ContentTransfer, 300, '📦')}
+        ${renderCard('Total Transaction Time', s.TotalTime, 1200, '⏱️')}
+      </div>
+    </main>
+    ${footerHTML()}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Error State Page
+   ═══════════════════════════════════════════════════════════════════════════ */
+function showError(target, msg) {
+  clearInterval(window._loadTimer);
+  document.getElementById('app').innerHTML = `
+    ${navHTML(target)}
+    <div class="min-h-[60vh] flex items-center justify-center px-4">
+      <div class="text-center max-w-md w-full animate-fade-up">
+        <div class="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
+          <svg class="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008Z"/>
+          </svg>
+        </div>
+        <h2 class="text-xl font-bold text-slate-50 tracking-tight mb-2">Trace Benchmark Failed</h2>
+        <p class="text-xs text-slate-400 mb-4">Target: <span class="font-mono text-slate-300 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5">${esc(target)}</span></p>
+        <div class="bg-red-950/20 border border-red-900/40 rounded-xl p-4 text-xs font-mono text-red-300 text-left mb-6 break-words leading-relaxed">${esc(msg)}</div>
+        <a href="/trace.html" class="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl px-5 py-3 text-xs font-bold text-slate-300 hover:text-white transition-all">
+          ← Back to setup
+        </a>
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Utilities & Shared HTML Markup
+   ═══════════════════════════════════════════════════════════════════════════ */
+function navHTML(domain) {
+  return `
+  <nav class="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center gap-4">
+          <a href="/" class="flex items-center gap-1.5 text-slate-450 hover:text-slate-200 transition-colors text-sm font-semibold">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+            Back
+          </a>
+          <span class="text-slate-800 select-none">|</span>
+          <a href="/" class="flex items-center gap-2.5">
+            <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow">
+              <svg class="w-4 h-4 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </div>
+            <span class="font-black text-base text-slate-50 tracking-tight">gofetch</span>
+          </a>
+          <span class="text-slate-800 select-none">/</span>
+          <span class="text-xs text-slate-500 font-semibold font-mono">Trace</span>
+          ${domain ? `<span class="hidden sm:block text-slate-800 select-none">/</span>
+                      <span class="hidden sm:block text-xs font-mono text-slate-500 truncate max-w-xs">${esc(domain)}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  </nav>`;
+}
+
+function footerHTML() {
+  return `
+  <footer class="border-t border-slate-900 bg-slate-950 py-6 mt-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 text-xs text-slate-500">
+        <div class="w-5 h-5 bg-emerald-500 rounded flex items-center justify-center">
+          <svg class="w-2.5 h-2.5 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
+        gofetch — Open Source Intelligence Toolkit
+      </div>
+      <p class="text-xs text-slate-700">Built with Go &amp; Tailwind CSS · Deployed on Render</p>
+    </div>
+  </footer>`;
+}
+
+function fmtDur(usVal) {
+  if (!usVal) return '—';
+  // convert microsecond integer (represented in Go JSON duration default serialization, wait, does Go serialize time.Duration as nanoseconds? 
+  // Ah! Go's json.Marshal encodes time.Duration as an integer number of nanoseconds!
+  // Let's verify: Yes, time.Duration is represented as nanoseconds in JSON output if using standard json.Encoder.
+  // Wait, let's confirm: 1 ms = 1,000,000 ns.
+  // So stats.Min etc. are in nanoseconds!
+  // Let's divide by 1,000,000 to get milliseconds!)
+  const ms = usVal / 1000000.0;
+  return `${ms.toFixed(2)} ms`;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
