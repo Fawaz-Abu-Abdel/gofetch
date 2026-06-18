@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gofetch — Scan Results</title>
+  <meta name="description" content="gofetch network intelligence scan results — DNS, SSL, GeoIP, HTTP headers, and port scan." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          animation: {
+            'pulse-slow':  'pulse 3s ease-in-out infinite',
+            'fade-up':     'fadeUp .45s ease both',
+            'blink':       'blink 1s step-end infinite',
+            'bar-grow':    'barGrow 1s ease both',
+          },
+          keyframes: {
+            fadeUp:  { from: { opacity:'0', transform:'translateY(14px)' }, to: { opacity:'1', transform:'translateY(0)' } },
+            blink:   { '0%,100%': { opacity:'1' }, '50%': { opacity:'0' } },
+            barGrow: { from: { width:'0%' }, to: {} },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen selection:bg-emerald-500/20 selection:text-emerald-300">
+<div id="app">
+  <!-- Filled by JS -->
+  <div class="flex items-center justify-center min-h-screen">
+    <div class="text-slate-600 text-sm font-mono animate-pulse">Initialising…</div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   Boot
+   ═══════════════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', init);
+
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const domain = params.get('domain')?.trim();
+  if (!domain) { window.location.href = '/'; return; }
+
+  showLoading(domain);
+
+  try {
+    const t0  = Date.now();
+    const res = await fetch(`/api/scan?domain=${encodeURIComponent(domain)}`);
+    const data = await res.json();
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+
+    if (data.error) throw new Error(data.error);
+    renderPage(domain, data, elapsed);
+  } catch (err) {
+    showError(domain, err.message);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Loading skeleton
+   ═══════════════════════════════════════════════════════════════════════════ */
+const scanPhrases = [
+  'Resolving DNS records…',
+  'Probing TLS certificate…',
+  'Checking HTTP headers…',
+  'Querying GeoIP database…',
+  'Scanning TCP ports…',
+  'Aggregating results…',
+];
+
+function showLoading(domain) {
+  document.title = `Scanning ${domain} — gofetch`;
+
+  document.getElementById('app').innerHTML = `
+    ${navHTML(domain)}
+    <!-- Loading header -->
+    <div class="bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/60 py-10">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 bg-slate-900 border border-slate-800 rounded-2xl animate-pulse"></div>
+          <div class="space-y-2">
+            <div class="h-6 w-48 bg-slate-900 rounded-lg animate-pulse"></div>
+            <div class="h-3.5 w-32 bg-slate-900/60 rounded animate-pulse"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse-slow"></span>
+          <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse-slow delay-100"></span>
+          <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse-slow delay-200"></span>
+          <span id="loading-msg" class="text-sm text-slate-400 ml-2 font-mono transition-all">${scanPhrases[0]}</span>
+        </div>
+      </div>
+    </div>
+    <!-- Skeleton grid -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        ${Array(4).fill('<div class="h-20 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>').join('')}
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+        <div class="lg:col-span-4 h-64 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>
+        <div class="lg:col-span-2 h-64 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>
+        <div class="lg:col-span-3 h-64 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>
+        <div class="lg:col-span-3 h-64 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>
+      </div>
+      <div class="mt-6 h-80 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>
+      <div class="mt-6 h-52 bg-slate-900/40 border border-slate-800/40 rounded-2xl animate-pulse"></div>
+    </main>`;
+
+  // Cycle loading messages
+  let i = 1;
+  window._loadTimer = setInterval(() => {
+    const el = document.getElementById('loading-msg');
+    if (el) {
+      el.style.opacity = '0';
+      setTimeout(() => {
+        el.textContent = scanPhrases[i % scanPhrases.length];
+        el.style.opacity = '1';
+        i++;
+      }, 200);
+    }
+  }, 2000);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Full results page
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderPage(domain, data, elapsed) {
+  clearInterval(window._loadTimer);
+  const display = data.Target || domain;
+  document.title = `${display} — gofetch Scan Results`;
+
+  document.getElementById('app').innerHTML = `
+    ${navHTML(display)}
+    ${renderHero(display, data, elapsed)}
+    ${renderStatBar(data)}
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <!-- Row 1: DNS (wide) + GeoIP (narrow) -->
+      <div class="grid grid-cols-1 lg:grid-cols-6 gap-6">
+        <div class="lg:col-span-4 animate-fade-up" style="animation-delay:.05s">${renderDNS(data.DNS)}</div>
+        <div class="lg:col-span-2 animate-fade-up" style="animation-delay:.10s">${renderGeoIP(data.GeoIP)}</div>
+      </div>
+      <!-- Row 2: SSL + HTTP -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="animate-fade-up" style="animation-delay:.15s">${renderSSL(data.SSL)}</div>
+        <div class="animate-fade-up" style="animation-delay:.20s">${renderHTTP(data.Headers)}</div>
+      </div>
+      <!-- Row 3: Security Headers (full) -->
+      <div class="animate-fade-up" style="animation-delay:.25s">${renderSecurity(data.Headers)}</div>
+      <!-- Row 4: Port scan (full) -->
+      <div class="animate-fade-up" style="animation-delay:.30s">${renderPorts(data.Ports)}</div>
+    </main>
+    ${footerHTML()}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Header / hero
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderHero(domain, data, elapsed) {
+  const ip = data.DNS?.ARecords?.[0] ?? '—';
+  const now = new Date().toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' });
+  const modules = [data.DNS, data.SSL, data.Headers, data.GeoIP, data.Ports];
+  const ok = modules.filter(m => m && !m.Error && !m.error).length;
+
+  return `
+  <div class="bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/5">
+            <svg class="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/>
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-extrabold font-mono text-slate-50 tracking-tight">${esc(domain)}</h1>
+            <p class="text-slate-500 text-sm mt-1">
+              <span class="font-mono text-slate-400 bg-slate-900/60 border border-slate-800/60 rounded px-2 py-0.5">${esc(ip)}</span>
+              <span class="mx-2 text-slate-700">·</span>
+              <span class="text-slate-400">${esc(now)}</span>
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-6">
+          <div class="text-right">
+            <div class="text-[11px] text-slate-500 uppercase tracking-widest font-semibold">Probes</div>
+            <div class="text-xl font-bold font-mono text-slate-200">${ok}<span class="text-slate-600">/${modules.length}</span></div>
+          </div>
+          <div class="text-right">
+            <div class="text-[11px] text-slate-500 uppercase tracking-widest font-semibold">Duration</div>
+            <div class="text-xl font-bold font-mono text-emerald-400">${elapsed}s</div>
+          </div>
+          <a href="/?domain=${encodeURIComponent(domain)}" onclick="newScan(event)"
+             class="hidden sm:inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-slate-50 text-sm font-semibold px-4 py-2.5 rounded-xl transition-all">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+            Re-scan
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Stats bar
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderStatBar(data) {
+  const dns   = data.DNS;
+  const ssl   = data.SSL;
+  const ports = data.Ports;
+  const hdr   = data.Headers;
+
+  // DNS count
+  const aCount = dns?.ARecords?.length ?? 0;
+  const dnsLabel = aCount ? `${aCount} A record${aCount>1?'s':''}` : 'No A records';
+
+  // SSL
+  let sslLabel = 'Unavailable', sslColor = 'text-slate-400';
+  if (ssl && !ssl.Error) {
+    if (ssl.IsExpired)            { sslLabel = 'Expired';         sslColor = 'text-red-400'; }
+    else if (ssl.DaysUntilExpiry < 14) { sslLabel = `${ssl.DaysUntilExpiry}d left ⚠`; sslColor = 'text-red-400'; }
+    else if (ssl.DaysUntilExpiry < 30) { sslLabel = `${ssl.DaysUntilExpiry}d left ⚠`; sslColor = 'text-yellow-400'; }
+    else                          { sslLabel = `${ssl.DaysUntilExpiry}d valid ✓`; sslColor = 'text-emerald-400'; }
+  }
+
+  // Ports
+  const open = ports?.OpenPorts?.length ?? 0;
+
+  // Security grade
+  const grade = (hdr && !hdr.Error && hdr.Security) ? getSecGrade(hdr.Security) : null;
+
+  const stat = (icon, label, value, color) => `
+    <div class="bg-slate-900/50 border border-slate-800/60 rounded-2xl p-4 flex items-center gap-3.5 backdrop-blur-sm">
+      <div class="w-10 h-10 rounded-xl bg-slate-800/40 border border-slate-800/30 flex items-center justify-center text-lg shadow-inner">${icon}</div>
+      <div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">${label}</div>
+        <div class="text-sm font-bold font-mono ${color} leading-tight mt-0.5">${value}</div>
+      </div>
+    </div>`;
+
+  return `
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      ${stat('🌐', 'DNS', dnsLabel,           aCount ? 'text-cyan-400' : 'text-slate-500')}
+      ${stat('🔒', 'SSL Certificate',   sslLabel,           sslColor)}
+      ${stat('🔭', 'Open Ports', `${open} detected`,     open ? 'text-emerald-400' : 'text-slate-400')}
+      ${stat('🛡️', 'Security Grade', grade ? grade.grade : 'N/A', grade ? grade.textColor : 'text-slate-500')}
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DNS card
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderDNS(dns) {
+  if (!dns) return errCard('DNS Records', 'DNS probe unavailable', 'blue');
+
+  const types = [
+    { label:'A',     records: dns.ARecords    || [],                              badgeClass:'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'    },
+    { label:'AAAA',  records: dns.AAAARecords  || [],                              badgeClass:'bg-blue-500/10 border-blue-500/20 text-blue-300'    },
+    { label:'CNAME', records: dns.CNAMERecord  ? [dns.CNAMERecord] : [],           badgeClass:'bg-violet-500/10 border-violet-500/20 text-violet-300'  },
+    { label:'MX',    records: (dns.MXRecords||[]).map(m=>`${m.Host} (priority ${m.Priority})`), badgeClass:'bg-orange-500/10 border-orange-500/20 text-orange-300' },
+    { label:'TXT',   records: dns.TXTRecords  || [],                              badgeClass:'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' },
+  ];
+
+  const total = (dns.ARecords?.length||0)+(dns.AAAARecords?.length||0)+(dns.MXRecords?.length||0)+(dns.TXTRecords?.length||0);
+
+  const rows = types.map(t => `
+    <div class="flex flex-col sm:flex-row sm:items-start gap-2 py-4 border-b border-slate-800/40 last:border-0">
+      <span class="w-16 text-xs font-bold font-mono text-slate-500 tracking-wider uppercase pt-1">${t.label}</span>
+      <div class="flex flex-wrap gap-2 min-w-0 flex-1">
+        ${t.records.length
+          ? t.records.map(r=>`<span class="inline-flex font-mono text-xs rounded-lg px-2.5 py-1 border ${t.badgeClass} break-all">${esc(r)}</span>`).join('')
+          : `<span class="text-xs text-slate-650 italic font-mono">—</span>`}
+      </div>
+    </div>`).join('');
+
+  return `
+  <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl h-full flex flex-col">
+    <div class="flex items-center gap-3 px-6 py-4.5 border-b border-slate-800/60 bg-slate-800/10">
+      <div class="w-8 h-8 rounded-xl bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 2a14.5 14.5 0 0 1 0 20M12 2a14.5 14.5 0 0 0 0 20M2 12h20"/>
+        </svg>
+      </div>
+      <span class="font-bold text-slate-50">DNS Records</span>
+      <span class="ml-auto font-mono text-[11px] rounded-lg px-2.5 py-1 border bg-slate-800/80 border-slate-700/85 text-slate-400">${total} records found</span>
+    </div>
+    <div class="p-6 flex-1 flex flex-col justify-center">
+      <div class="divide-y divide-slate-800/30">
+        ${rows}
+      </div>
+      ${dns.Errors?.length ? `<div class="mt-4 pt-4 border-t border-slate-800/30 space-y-1.5">${dns.Errors.map(e=>`<div class="text-xs text-yellow-500/70 font-mono flex items-center gap-1.5"><span>⚠</span> <span>${esc(e)}</span></div>`).join('')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GeoIP card
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderGeoIP(geo) {
+  if (!geo || geo.Error) return errCard('GeoIP / Network', geo?.Error || 'GeoIP probe unavailable', 'violet');
+
+  const flag = countryFlag(geo.CountryCode);
+  const row  = (label, val, mono=false) => val
+    ? `<div class="flex items-start gap-2 py-2.5 border-b border-slate-850/50 last:border-0">
+         <span class="text-[10px] font-bold text-slate-500 w-16 flex-shrink-0 pt-0.5 uppercase tracking-wider">${label}</span>
+         <span class="text-xs ${mono?'font-mono text-slate-350':'text-slate-200'} break-all flex-1">${esc(val)}</span>
+       </div>`
+    : '';
+
+  return `
+  <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl h-full flex flex-col">
+    <div class="flex items-center gap-3 px-6 py-4.5 border-b border-slate-800/60 bg-slate-800/10">
+      <div class="w-8 h-8 rounded-xl bg-violet-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+          <path stroke-linecap="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"/>
+        </svg>
+      </div>
+      <span class="font-bold text-slate-50">GeoIP / Network</span>
+    </div>
+    <div class="p-6 flex-1 flex flex-col justify-between">
+      <div class="flex items-center gap-4 mb-4 pb-4 border-b border-slate-800/60">
+        <span class="text-4xl filter drop-shadow select-none">${flag}</span>
+        <div>
+          <div class="font-bold text-base text-slate-50 leading-tight">${esc(geo.Country || '—')}</div>
+          <div class="text-xs text-slate-400 mt-1">${[geo.RegionName, geo.City].filter(Boolean).join(', ') || '—'}</div>
+        </div>
+      </div>
+      <div class="space-y-0.5">
+        ${row('IP Address',   geo.Query,  true)}
+        ${row('ISP Provider',  geo.ISP)}
+        ${row('ASN Info',   geo.AS,     true)}
+        ${geo.Lat && geo.Lon ? row('Coords', `${geo.Lat.toFixed(4)}°, ${geo.Lon.toFixed(4)}°`, true) : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SSL card
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderSSL(ssl) {
+  if (!ssl || ssl.Error) return errCard('TLS / SSL Certificate', ssl?.Error || 'SSL probe unavailable', 'emerald');
+
+  const days    = ssl.DaysUntilExpiry ?? 0;
+  const expired = ssl.IsExpired;
+
+  let badge, barColor, dayColor;
+  if (expired)       { badge = badgeFn('EXPIRED', 'red');    barColor='#ef4444'; dayColor='text-red-400'; }
+  else if (days<14)  { badge = badgeFn(`${days}d left ⚠`,'red');    barColor='#ef4444'; dayColor='text-red-400'; }
+  else if (days<30)  { badge = badgeFn(`${days}d left ⚠`,'yellow'); barColor='#eab308'; dayColor='text-yellow-400'; }
+  else               { badge = badgeFn(`${days}d valid ✓`,'emerald');      barColor='#10b981'; dayColor='text-emerald-400'; }
+
+  const issued = ssl.IssuedAt ? new Date(ssl.IssuedAt) : null;
+  const expiry = ssl.ExpiresAt ? new Date(ssl.ExpiresAt) : null;
+  let pct = 100;
+  if (issued && expiry) {
+    pct = Math.max(0, Math.min(100, ((expiry - Date.now()) / (expiry - issued)) * 100));
+  }
+
+  return `
+  <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl flex flex-col h-full">
+    <div class="flex items-center gap-3 px-6 py-4.5 border-b border-slate-800/60 bg-slate-800/10">
+      <div class="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/>
+        </svg>
+      </div>
+      <span class="font-bold text-slate-50">TLS / SSL Certificate</span>
+      <div class="ml-auto">${badge}</div>
+    </div>
+    <div class="p-6 flex-1 flex flex-col justify-between space-y-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Common Name (CN)</div>
+          <div class="font-mono font-bold text-sm text-slate-200 truncate" title="${esc(ssl.Subject)}">${esc(ssl.Subject || '—')}</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Issuer Authority</div>
+          <div class="text-sm font-mono text-slate-350 truncate" title="${esc(ssl.Issuer)}">${esc(ssl.Issuer || '—')}</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Issue Date</div>
+          <div class="font-mono text-xs text-slate-400">${fmtDate(ssl.IssuedAt)}</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Expiration Date</div>
+          <div class="font-mono text-xs ${dayColor}">${fmtDate(ssl.ExpiresAt)}</div>
+        </div>
+      </div>
+      <!-- Validity progress bar -->
+      <div>
+        <div class="flex justify-between text-xs mb-2">
+          <span class="text-slate-500">Certificate Validity Span</span>
+          <span class="${dayColor} font-mono font-bold">${Math.round(pct)}% remaining</span>
+        </div>
+        <div class="h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800/40">
+          <div class="h-full rounded-full animate-bar-grow" style="width:${pct}%;background:${barColor};transition:width 1s ease"></div>
+        </div>
+      </div>
+      ${ssl.SANs?.length ? `
+      <div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-2">Subject Alternative Names (${ssl.SANs.length})</div>
+        <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1" style="scrollbar-width: thin; scrollbar-color: #334155 #020617;">
+          ${ssl.SANs.map(s=>`<span class="font-mono text-[10px] rounded px-1.5 py-0.5 border bg-slate-950/80 border-slate-850/80 text-slate-400">${esc(s)}</span>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HTTP card
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderHTTP(h) {
+  if (!h || h.Error) return errCard('HTTP Response', h?.Error || 'HTTP probe unavailable', 'orange');
+
+  const code = h.StatusCode;
+  const codeMap = { 200:'OK',201:'Created',204:'No Content',301:'Moved',302:'Found',304:'Not Modified',400:'Bad Request',401:'Unauthorized',403:'Forbidden',404:'Not Found',429:'Too Many Requests',500:'Server Error',502:'Bad Gateway',503:'Unavailable' };
+
+  let codeClass = 'bg-emerald-550/10 border-emerald-550/20 text-emerald-400';
+  if (code >= 500) codeClass = 'bg-red-500/10 border-red-500/20 text-red-400';
+  else if (code >= 400) codeClass = 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400';
+  else if (code >= 300) codeClass = 'bg-blue-500/10 border-blue-500/20 text-blue-400';
+
+  return `
+  <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl flex flex-col h-full">
+    <div class="flex items-center gap-3 px-6 py-4.5 border-b border-slate-800/60 bg-slate-800/10">
+      <div class="w-8 h-8 rounded-xl bg-orange-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/>
+        </svg>
+      </div>
+      <span class="font-bold text-slate-50">HTTP Response</span>
+      <span class="ml-auto font-mono font-bold text-xs border rounded-lg px-2.5 py-1 ${codeClass}">
+        ${code} ${codeMap[code] || ''}
+      </span>
+    </div>
+    <div class="p-6 flex-1 flex flex-col justify-between space-y-4">
+      <div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Resolved URL</div>
+        <a href="${esc(h.FinalURL)}" target="_blank" rel="noopener"
+           class="text-xs font-mono text-cyan-400 hover:text-cyan-300 transition-colors break-all leading-relaxed flex items-center gap-1.5">
+          <span class="underline">${esc(h.FinalURL || '—')}</span>
+          <svg class="w-3.5 h-3.5 flex-shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+        </a>
+      </div>
+      <div class="grid grid-cols-2 gap-4 border-t border-slate-800/40 pt-4">
+        <div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Web Server</div>
+          <div class="text-sm font-mono text-slate-200 truncate" title="${esc(h.Server)}">${esc(h.Server || '—')}</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-1">Tech Stack</div>
+          <div class="text-sm font-mono text-slate-200 truncate" title="${esc(h.XPoweredBy)}">${esc(h.XPoweredBy || '—')}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Security Headers card
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderSecurity(h) {
+  if (!h || h.Error) return errCard('Security Headers Check', h?.Error || 'unavailable', 'orange');
+
+  const sh = h.Security || {};
+  const defs = [
+    { key:'StrictTransportSecurity', name:'Strict-Transport-Security', desc:'Enforces encrypted HTTPS connections' },
+    { key:'XFrameOptions',           name:'X-Frame-Options',           desc:'Prevents clickjacking framing attacks' },
+    { key:'XContentTypeOptions',     name:'X-Content-Type-Options',    desc:'Blocks MIME-type sniffer manipulation' },
+    { key:'XXSSProtection',          name:'X-XSS-Protection',          desc:'Activates client-side XSS filters' },
+    { key:'ReferrerPolicy',          name:'Referrer-Policy',           desc:'Controls referer leak boundaries' },
+    { key:'PermissionsPolicy',       name:'Permissions-Policy',        desc:'Restricts sensitive API capabilities' },
+    { key:'ContentSecurityPolicy',   name:'Content-Security-Policy',   desc:'Specifies trusted content origins' },
+  ];
+
+  const set   = defs.filter(d => sh[d.key]).length;
+  const pct   = Math.round((set / defs.length) * 100);
+  const grade = getSecGrade(sh);
+
+  const rows = defs.map(d => {
+    const val = sh[d.key];
+    const display = val ? (val.length > 80 ? val.slice(0,80) + '…' : val) : '';
+    return `
+    <div class="grid grid-cols-12 gap-x-4 gap-y-2 items-center py-4 border-b border-slate-800/40 last:border-0">
+      <!-- Status Icon -->
+      <div class="col-span-2 sm:col-span-1 flex justify-center">
+        ${val
+          ? `<div class="w-5 h-5 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center"><svg class="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" d="M4.5 12.75l6 6 9-13.5"/></svg></div>`
+          : `<div class="w-5 h-5 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center"><svg class="w-3 h-3 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" d="M6 18 18 6M6 6l12 12"/></svg></div>`}
+      </div>
+      <!-- Header info -->
+      <div class="col-span-10 sm:col-span-4 lg:col-span-3">
+        <div class="text-xs font-mono font-bold ${val ? 'text-slate-200' : 'text-slate-500'}">${esc(d.name)}</div>
+        <div class="text-[10px] text-slate-500 mt-0.5 leading-snug">${d.desc}</div>
+      </div>
+      <!-- Value detail -->
+      <div class="col-span-12 sm:col-span-7 lg:col-span-8 mt-1 sm:mt-0">
+        ${val
+          ? `<div class="text-[11px] font-mono text-emerald-300/90 bg-emerald-950/20 border border-emerald-900/40 rounded-lg px-3 py-2 break-all leading-normal">${esc(display)}</div>`
+          : `<div class="text-[11px] text-red-400/60 font-mono italic bg-red-950/10 border border-red-900/10 rounded-lg px-3 py-2">Header not present</div>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl">
+    <div class="flex items-center gap-3 px-6 py-4.5 border-b border-slate-800/60 bg-slate-800/10">
+      <div class="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/>
+        </svg>
+      </div>
+      <span class="font-bold text-slate-50">Security Headers Analyzer</span>
+      <div class="ml-auto flex items-center gap-4">
+        <span class="text-xs text-slate-500 font-mono">${set} / ${defs.length} present</span>
+        <div class="w-10 h-10 rounded-full border-2 flex items-center justify-center font-black text-sm font-mono shadow-md" style="border-color:${grade.color};color:${grade.color};background-color:${grade.color}10">
+          ${grade.grade}
+        </div>
+      </div>
+    </div>
+    <!-- Overall gauge bar -->
+    <div class="px-6 py-3 border-b border-slate-800/40 bg-slate-950/20 flex items-center gap-4">
+      <div class="flex-1 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-900/60">
+        <div class="h-full rounded-full" style="width:${pct}%;background:${grade.color};transition:width 1.5s ease"></div>
+      </div>
+      <span class="text-xs font-mono font-bold" style="color:${grade.color}">${pct}% strength</span>
+    </div>
+    <div class="p-6 divide-y divide-slate-800/20">${rows}</div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Port scan card
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderPorts(p) {
+  if (!p || p.Error) return errCard('Port Scan Status', p?.Error || 'Port scan unavailable', 'cyan');
+
+  const open   = p.OpenPorts || [];
+  const closed = (p.ScannedCount || 0) - open.length;
+
+  const portCards = open.map(op => `
+    <div class="flex flex-col items-center justify-center p-4 bg-emerald-950/15 border border-emerald-900/40 rounded-xl hover:border-emerald-500/30 transition-all duration-250 group shadow-sm">
+      <div class="flex items-center gap-1.5 mb-1">
+        <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+        <span class="font-mono font-bold text-lg text-emerald-400">${op.Port}</span>
+      </div>
+      <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">${esc(op.Service || 'unknown')}</span>
+    </div>`).join('');
+
+  return `
+  <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl">
+    <div class="flex items-center gap-3 px-6 py-4.5 border-b border-slate-800/60 bg-slate-800/10">
+      <div class="w-8 h-8 rounded-xl bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 6 0m-6 0H2.25m16.5 0a3 3 0 0 0 3-3m-3 3a3 3 0 1 1-6 0m6 0h1.5m-1.5 0H9.75m11.25-3a3 3 0 0 0-3-3h-1.5m-10.5 3a3 3 0 0 1-3-3m3 3a3 3 0 1 0 6 0"/>
+        </svg>
+      </div>
+      <span class="font-bold text-slate-50">TCP Port Scan</span>
+      <div class="ml-auto">
+        <span class="font-mono text-xs rounded-lg px-2.5 py-1 border bg-slate-800/85 border-slate-700/85 text-slate-400">${esc(p.ScannedIP)}</span>
+      </div>
+    </div>
+    <div class="p-6">
+      <!-- KPI stats grid -->
+      <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="text-center p-3.5 bg-slate-950/35 border border-slate-850/50 rounded-xl">
+          <div class="text-xl font-bold font-mono text-slate-300">${p.ScannedCount || 0}</div>
+          <div class="text-[9px] text-slate-500 mt-1 uppercase tracking-widest font-semibold">Scanned</div>
+        </div>
+        <div class="text-center p-3.5 bg-emerald-950/20 border border-emerald-900/40 rounded-xl shadow-inner">
+          <div class="text-xl font-bold font-mono text-emerald-400">${open.length}</div>
+          <div class="text-[9px] text-slate-500 mt-1 uppercase tracking-widest font-semibold">Open</div>
+        </div>
+        <div class="text-center p-3.5 bg-slate-950/35 border border-slate-850/50 rounded-xl">
+          <div class="text-xl font-bold font-mono text-slate-500">${closed}</div>
+          <div class="text-[9px] text-slate-500 mt-1 uppercase tracking-widest font-semibold">Closed</div>
+        </div>
+      </div>
+
+      ${open.length === 0
+        ? `<div class="text-center py-10 text-slate-500 text-xs font-mono border border-dashed border-slate-800/60 rounded-xl bg-slate-950/15">No open TCP ports detected in standard range.</div>`
+        : `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">${portCards}</div>`}
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Error state card layout
+   ═══════════════════════════════════════════════════════════════════════════ */
+function showError(domain, msg) {
+  clearInterval(window._loadTimer);
+  document.getElementById('app').innerHTML = `
+    ${navHTML(domain)}
+    <div class="min-h-[70vh] flex items-center justify-center px-4">
+      <div class="text-center max-w-md w-full animate-fade-up">
+        <div class="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-red-500/5">
+          <svg class="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008Z"/>
+          </svg>
+        </div>
+        <h2 class="text-xl font-bold text-slate-50 tracking-tight mb-2">Scan Session Failed</h2>
+        <p class="text-xs text-slate-400 mb-4">Target domain requested: <span class="font-mono text-slate-300 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5">${esc(domain)}</span></p>
+        <div class="bg-red-950/20 border border-red-900/40 rounded-xl p-4 text-xs font-mono text-red-300 text-left mb-6 break-words leading-relaxed">${esc(msg)}</div>
+        <a href="/" class="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl px-5 py-3 text-xs font-bold text-slate-300 hover:text-white transition-all">
+          ← Back to home
+        </a>
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Shared HTML layout components
+   ═══════════════════════════════════════════════════════════════════════════ */
+function navHTML(domain) {
+  return `
+  <nav class="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center gap-4">
+          <a href="/" class="flex items-center gap-1.5 text-slate-450 hover:text-slate-200 transition-colors text-sm font-semibold">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+            Back
+          </a>
+          <span class="text-slate-800 select-none">|</span>
+          <a href="/" class="flex items-center gap-2.5">
+            <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center glow-emerald shadow">
+              <svg class="w-4 h-4 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </div>
+            <span class="font-black text-base text-slate-50 tracking-tight">gofetch</span>
+          </a>
+          ${domain ? `<span class="hidden sm:block text-slate-800 select-none">/</span>
+                      <span class="hidden sm:block text-xs font-mono text-slate-500 truncate max-w-xs">${esc(domain)}</span>` : ''}
+        </div>
+        <button onclick="newScan()"
+          class="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-lg transition-all shadow-md shadow-emerald-500/10">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          New Scan
+        </button>
+      </div>
+    </div>
+  </nav>`;
+}
+
+function footerHTML() {
+  return `
+  <footer class="border-t border-slate-900 bg-slate-950 py-8 mt-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-2.5 text-xs text-slate-500">
+        <div class="w-6 h-6 bg-emerald-500 rounded flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
+        gofetch — Open Source Intelligence Toolkit
+      </div>
+      <p class="text-xs text-slate-650">Built with Go &amp; Tailwind CSS · Deployed on Render</p>
+    </div>
+  </footer>`;
+}
+
+function errCard(title, msg, color = 'slate') {
+  const colors = {
+    blue:   'text-blue-400 bg-blue-500/5 border-blue-500/10',
+    violet: 'text-violet-400 bg-violet-500/5 border-violet-500/10',
+    orange: 'text-orange-400 bg-orange-500/5 border-orange-500/10',
+    emerald:'text-emerald-400 bg-emerald-500/5 border-emerald-500/10',
+    cyan:   'text-cyan-400 bg-cyan-500/5 border-cyan-500/10',
+    slate:  'text-slate-400 bg-slate-950/40 border-slate-900/60',
+  };
+  return `
+  <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl flex flex-col h-full">
+    <div class="px-6 py-4.5 border-b border-slate-800/60 bg-slate-800/10"><span class="font-bold text-slate-50">${title}</span></div>
+    <div class="p-6 flex-1 flex flex-col justify-center">
+      <div class="flex items-start gap-2.5 p-4 rounded-xl border ${colors[color] || colors.slate} bg-slate-950/30">
+        <svg class="w-4 h-4 flex-shrink-0 mt-0.5 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+        </svg>
+        <span class="text-[11px] font-mono leading-relaxed">${esc(msg)}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Utilities
+   ═══════════════════════════════════════════════════════════════════════════ */
+function newScan(e) {
+  if (e) e.preventDefault();
+  const d = document.querySelector('input')?.value?.trim();
+  if (d) window.location.href = `/?domain=${encodeURIComponent(d)}`;
+  else window.location.href = '/';
+}
+
+function badgeFn(text, color) {
+  const map = {
+    emerald: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    yellow:  'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
+    red:     'bg-red-500/10 border-red-500/20 text-red-400',
+    blue:    'bg-blue-500/10 border-blue-500/20 text-blue-400',
+  };
+  return `<span class="text-[10px] font-bold font-mono border rounded-lg px-2.5 py-1 ${map[color] || map.emerald}">${text}</span>`;
+}
+
+function getSecGrade(sh) {
+  const keys = ['StrictTransportSecurity','XFrameOptions','XContentTypeOptions','XXSSProtection','ReferrerPolicy','PermissionsPolicy','ContentSecurityPolicy'];
+  const pct  = (keys.filter(k => sh[k]).length / keys.length) * 100;
+  if (pct === 100) return { grade:'A+', color:'#10b981', textColor:'text-emerald-400' };
+  if (pct >= 85)   return { grade:'A',  color:'#10b981', textColor:'text-emerald-400' };
+  if (pct >= 70)   return { grade:'B',  color:'#3b82f6', textColor:'text-blue-400'    };
+  if (pct >= 50)   return { grade:'C',  color:'#f59e0b', textColor:'text-yellow-400'  };
+  if (pct >= 25)   return { grade:'D',  color:'#f97316', textColor:'text-orange-400'  };
+  return                   { grade:'F',  color:'#ef4444', textColor:'text-red-400'     };
+}
+
+function countryFlag(code) {
+  if (!code || code.length !== 2) return '🌐';
+  const b = 0x1F1E6 - 65;
+  return String.fromCodePoint(b + code.charCodeAt(0), b + code.charCodeAt(1));
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toISOString().split('T')[0]; } catch { return iso; }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

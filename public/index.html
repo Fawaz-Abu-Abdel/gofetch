@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gofetch — Network Intelligence Platform</title>
+  <meta name="description" content="Professional OSINT and network reconnaissance toolkit built with Go. DNS enumeration, TLS inspection, GeoIP mapping, and concurrent port scanning." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          animation: {
+            'blink':      'blink 1s step-end infinite',
+            'float':      'float 5s ease-in-out infinite',
+            'fade-up':    'fadeUp .6s ease both',
+            'spin-slow':  'spin 8s linear infinite',
+            'pulse-slow': 'pulse 3s ease-in-out infinite',
+          },
+          keyframes: {
+            blink:   { '0%,100%': { opacity:'1' }, '50%': { opacity:'0' } },
+            float:   { '0%,100%': { transform:'translateY(0)' }, '50%': { transform:'translateY(-10px)' } },
+            fadeUp:  { from: { opacity:'0', transform:'translateY(18px)' }, to: { opacity:'1', transform:'translateY(0)' } },
+          },
+          colors: {
+            brand: { 400:'#34d399', 500:'#10b981', 600:'#059669' },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+
+<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-emerald-500/20 selection:text-emerald-300">
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--  NAVBAR                                                              -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<nav id="navbar" class="fixed top-0 w-full z-50 transition-all duration-300" aria-label="Main navigation">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+
+      <!-- Logo -->
+      <a href="#home" class="flex items-center gap-2.5 group" aria-label="gofetch home">
+        <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20" style="box-shadow: 0 0 20px rgba(16,185,129,.25)">
+          <svg class="w-4 h-4 text-slate-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
+        <span class="font-black text-lg tracking-tight text-slate-50">gofetch</span>
+      </a>
+
+      <!-- Desktop links -->
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#home"     class="text-sm font-medium text-slate-400 hover:text-slate-50 transition-colors duration-150">Home</a>
+        <a href="#services" class="text-sm font-medium text-slate-400 hover:text-slate-50 transition-colors duration-150">Services</a>
+        <a href="#about"    class="text-sm font-medium text-slate-400 hover:text-slate-50 transition-colors duration-150">About</a>
+      </div>
+
+      <!-- Desktop CTA -->
+      <a href="#scanner" class="hidden md:inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-3 rounded-xl text-sm transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-px active:translate-y-0 select-none">
+        Get Started
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/>
+        </svg>
+      </a>
+
+      <!-- Mobile hamburger -->
+      <button id="menu-btn" class="md:hidden p-2 rounded-lg text-slate-400 hover:text-slate-50 hover:bg-slate-800 transition-colors" aria-label="Toggle menu" aria-expanded="false">
+        <svg id="icon-open"  class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+        <svg id="icon-close" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="mobile-menu" class="md:hidden hidden border-t border-slate-800 bg-slate-950/95 backdrop-blur-md">
+    <div class="px-4 pt-3 pb-5 space-y-1">
+      <a href="#home"     class="block px-4 py-2.5 rounded-lg text-slate-300 hover:text-slate-50 hover:bg-slate-800 text-sm font-medium transition-colors" onclick="closeMobileMenu()">Home</a>
+      <a href="#services" class="block px-4 py-2.5 rounded-lg text-slate-300 hover:text-slate-50 hover:bg-slate-800 text-sm font-medium transition-colors" onclick="closeMobileMenu()">Services</a>
+      <a href="#about"    class="block px-4 py-2.5 rounded-lg text-slate-300 hover:text-slate-50 hover:bg-slate-800 text-sm font-medium transition-colors" onclick="closeMobileMenu()">About</a>
+      <div class="pt-2">
+        <a href="#scanner" class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-3 rounded-xl text-sm transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-px active:translate-y-0 select-none w-full justify-center" onclick="closeMobileMenu()">Get Started →</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--  HERO                                                                -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="home" class="relative min-h-screen flex items-center overflow-hidden pt-16">
+
+  <!-- Grid background -->
+  <div class="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.06)_1px,transparent_1px)] bg-[size:44px_44px] opacity-100 pointer-events-none"></div>
+
+  <!-- Glow blobs -->
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" style="box-shadow: 0 0 64px rgba(16,185,129,.2), 0 0 128px rgba(16,185,129,.08)"></div>
+  <div class="absolute bottom-0 right-0 w-[400px] h-[400px] bg-blue-600/8 rounded-full blur-3xl pointer-events-none"></div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 relative z-10 w-full">
+    <div class="grid lg:grid-cols-2 gap-16 items-center">
+
+      <!-- Left — Text content -->
+      <div class="animate-fade-up">
+
+        <!-- Badge -->
+        <div class="inline-flex items-center gap-2 bg-slate-900/80 border border-slate-800 rounded-full px-4 py-1.5 mb-8">
+          <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse-slow"></span>
+          <span class="text-xs font-semibold text-emerald-400 tracking-wide">v0.1.0 — Open Source Intelligence</span>
+        </div>
+
+        <!-- Heading -->
+        <h1 class="text-5xl sm:text-6xl lg:text-[4rem] xl:text-[4.5rem] font-black tracking-tight leading-[1.05] mb-6">
+          Network Intel<br/>
+          <span class="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">at Warp Speed.</span>
+        </h1>
+
+        <!-- Subheading -->
+        <p class="text-slate-400 text-lg leading-relaxed mb-10 max-w-lg">
+          gofetch is a modular OSINT toolkit built in Go — concurrent DNS enumeration,
+          TLS inspection, GeoIP mapping, and TCP port scanning in a single binary.
+        </p>
+
+        <!-- CTA buttons -->
+        <div class="flex flex-wrap gap-4 mb-12">
+          <a href="#scanner" class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-7 py-3.5 rounded-xl text-base transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-px active:translate-y-0 select-none">
+            Start Scanning
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+          </a>
+          <a href="https://github.com" target="_blank" rel="noopener" class="inline-flex items-center gap-2 bg-transparent border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-slate-50 font-semibold px-7 py-3.5 rounded-xl text-base transition-all duration-200 select-none">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2Z"/></svg>
+            View on GitHub
+          </a>
+        </div>
+
+        <!-- Quick feature pills -->
+        <div class="flex flex-wrap gap-2">
+          <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300"><span class="text-emerald-400">●</span> DNS Intel</span>
+          <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300"><span class="text-emerald-400">●</span> TLS/SSL</span>
+          <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300"><span class="text-emerald-400">●</span> GeoIP</span>
+          <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300"><span class="text-emerald-400">●</span> Port Scan</span>
+          <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300"><span class="text-emerald-400">●</span> HTTP Headers</span>
+        </div>
+      </div>
+
+      <!-- Right — Pseudo terminal preview -->
+      <div class="animate-float hidden lg:block">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl shadow-black/60">
+          <!-- Terminal title bar -->
+          <div class="flex items-center gap-2 px-4 py-3 bg-slate-800/60 border-b border-slate-700/60">
+            <span class="w-3 h-3 bg-red-500/80    rounded-full"></span>
+            <span class="w-3 h-3 bg-yellow-500/80 rounded-full"></span>
+            <span class="w-3 h-3 bg-emerald-500/80 rounded-full"></span>
+            <span class="ml-3 text-xs text-slate-500 font-mono">gofetch — terminal</span>
+          </div>
+          <!-- Terminal body -->
+          <div class="p-5 font-mono text-sm leading-relaxed bg-slate-950/80">
+            <div class="text-slate-500 mb-1">$ gofetch scan github.com</div>
+            <div class="mt-3 space-y-3 text-xs">
+              <div>
+                <div class="text-emerald-400 font-semibold mb-1">── DNS RECORDS</div>
+                <div class="text-slate-300 pl-3">A  <span class="text-cyan-400">140.82.121.3</span></div>
+                <div class="text-slate-300 pl-3">MX <span class="text-cyan-400">github-com.mail.protection.outlook.com</span></div>
+              </div>
+              <div>
+                <div class="text-emerald-400 font-semibold mb-1">── TLS CERTIFICATE</div>
+                <div class="text-slate-300 pl-3">Issuer  <span class="text-cyan-400">Sectigo Public Server Authentication CA</span></div>
+                <div class="text-slate-300 pl-3">Expires <span class="text-emerald-400">✓ 2026-08-02 — 45 days</span></div>
+              </div>
+              <div>
+                <div class="text-emerald-400 font-semibold mb-1">── PORT SCAN</div>
+                <div class="text-slate-300 pl-3">
+                  <span class="text-emerald-400">● 80</span>  HTTP  &nbsp;
+                  <span class="text-emerald-400">● 443</span> HTTPS
+                </div>
+              </div>
+              <div class="text-slate-500 flex items-center gap-2">
+                <span class="text-emerald-400">✓</span> Scan complete in 2.41s
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Floating accent badge -->
+        <div class="absolute -bottom-4 -right-4 bg-emerald-500 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-full shadow-lg shadow-emerald-500/40">
+          Blazing Fast ⚡
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bottom fade -->
+  <div class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-slate-950 to-transparent pointer-events-none"></div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--  SERVICES                                                            -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="services" class="py-24 bg-slate-950 relative">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    <!-- Header -->
+    <div class="text-center mb-16">
+      <p class="text-[11px] font-bold tracking-[0.18em] text-emerald-400 uppercase mb-3">What gofetch Does</p>
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-50 mb-4">Five Probes. One Command.</h2>
+      <p class="text-slate-400 max-w-xl mx-auto leading-relaxed">
+        Every probe runs concurrently, so you get a complete picture of any target in seconds, not minutes.
+      </p>
+    </div>
+
+    <!-- Feature grid -->
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <!-- DNS -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4 hover:border-slate-700 transition-all duration-200 hover:-translate-y-1 group">
+        <div class="w-11 h-11 bg-blue-500/15 rounded-xl flex items-center justify-center group-hover:bg-blue-500/25 transition-colors">
+          <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 1 0 20M12 2a14.5 14.5 0 0 0 0 20M2 12h20" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-50 mb-2">DNS Intelligence</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">Enumerate A, AAAA, CNAME, MX, and TXT records in parallel using Go's net package. Full record inspection in a single lookup.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-auto pt-2">
+          <span class="text-[11px] bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded px-2 py-0.5 font-medium">A · AAAA</span>
+          <span class="text-[11px] bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded px-2 py-0.5 font-medium">MX · TXT</span>
+          <span class="text-[11px] bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded px-2 py-0.5 font-medium">CNAME</span>
+        </div>
+      </div>
+
+      <!-- TLS -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4 hover:border-slate-700 transition-all duration-200 hover:-translate-y-1 group">
+        <div class="w-11 h-11 bg-emerald-500/15 rounded-xl flex items-center justify-center group-hover:bg-emerald-500/25 transition-colors">
+          <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-50 mb-2">TLS / SSL Inspection</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">Extract issuer, subject, expiry dates, and SANs via crypto/tls. Get expiry warnings at 14 and 30-day thresholds — never get blindsided by a cert renewal.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-auto pt-2">
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-2 py-0.5 font-medium">Issuer</span>
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-2 py-0.5 font-medium">Expiry</span>
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-2 py-0.5 font-medium">SANs</span>
+        </div>
+      </div>
+
+      <!-- GeoIP -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4 hover:border-slate-700 transition-all duration-200 hover:-translate-y-1 group">
+        <div class="w-11 h-11 bg-violet-500/15 rounded-xl flex items-center justify-center group-hover:bg-violet-500/25 transition-colors">
+          <svg class="w-5 h-5 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-50 mb-2">GeoIP & ASN Mapping</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">Query ip-api.com to resolve country, region, city, ISP, and Autonomous System Number for any resolved IP address.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-auto pt-2">
+          <span class="text-[11px] bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded px-2 py-0.5 font-medium">Country</span>
+          <span class="text-[11px] bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded px-2 py-0.5 font-medium">ISP</span>
+          <span class="text-[11px] bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded px-2 py-0.5 font-medium">ASN</span>
+        </div>
+      </div>
+
+      <!-- HTTP Headers -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4 hover:border-slate-700 transition-all duration-200 hover:-translate-y-1 group">
+        <div class="w-11 h-11 bg-orange-500/15 rounded-xl flex items-center justify-center group-hover:bg-orange-500/25 transition-colors">
+          <svg class="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-50 mb-2">HTTP Header Analysis</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">Probe all seven critical security headers — HSTS, CSP, X-Frame-Options, and more. Instantly see which are missing and which are configured.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-auto pt-2">
+          <span class="text-[11px] bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded px-2 py-0.5 font-medium">HSTS</span>
+          <span class="text-[11px] bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded px-2 py-0.5 font-medium">CSP</span>
+          <span class="text-[11px] bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded px-2 py-0.5 font-medium">7 headers</span>
+        </div>
+      </div>
+
+      <!-- Ports -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4 hover:border-slate-700 transition-all duration-200 hover:-translate-y-1 group">
+        <div class="w-11 h-11 bg-cyan-500/15 rounded-xl flex items-center justify-center group-hover:bg-cyan-500/25 transition-colors">
+          <svg class="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 6 0m-6 0H2.25m16.5 0a3 3 0 0 0 3-3m-3 3a3 3 0 1 1-6 0m6 0h1.5m-1.5 0H9.75m11.25-3a3 3 0 0 0-3-3h-1.5m-10.5 3a3 3 0 0 1-3-3m3 3a3 3 0 1 0 6 0"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-50 mb-2">Concurrent Port Scan</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">Probe 25 common TCP ports with net.DialTimeout using goroutine-per-port concurrency. Completes in ~1s wall time regardless of port count.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-auto pt-2">
+          <span class="text-[11px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded px-2 py-0.5 font-medium">25 ports</span>
+          <span class="text-[11px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded px-2 py-0.5 font-medium">Concurrent</span>
+          <span class="text-[11px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded px-2 py-0.5 font-medium">1s timeout</span>
+        </div>
+      </div>
+
+      <!-- Built with Go -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4 hover:border-slate-700 transition-all duration-205 hover:-translate-y-1 group border-emerald-900/40 bg-emerald-950/20 hover:border-emerald-800/60">
+        <div class="w-11 h-11 bg-emerald-500/20 rounded-xl flex items-center justify-center">
+          <span class="text-emerald-400 font-black text-lg font-mono">Go</span>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-50 mb-2">Built for Production</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">Single binary deployment on Render. Dual-mode: <code class="text-emerald-400 bg-emerald-500/10 px-1 rounded text-xs">./gofetch</code> serves the web UI, <code class="text-emerald-400 bg-emerald-500/10 px-1 rounded text-xs">./gofetch scan</code> runs the CLI.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-auto pt-2">
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-2 py-0.5 font-medium">Go embed</span>
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-2 py-0.5 font-medium">Cobra CLI</span>
+          <span class="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-2 py-0.5 font-medium">Render</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--  ABOUT DEVELOPER                                                     -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="about" class="py-24 bg-slate-900/50 border-y border-slate-800/50 relative overflow-hidden">
+  <!-- Subtle bg glow -->
+  <div class="absolute top-1/2 left-0 -translate-y-1/2 w-96 h-96 bg-emerald-600/5 rounded-full blur-3xl pointer-events-none"></div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+    <div class="grid lg:grid-cols-2 gap-16 items-center">
+
+      <!-- Left — Photo card -->
+      <div class="flex flex-col items-center lg:items-start gap-8">
+
+        <!-- Profile photo placeholder -->
+        <div class="relative">
+          <div class="w-48 h-48 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-emerald-500/40 flex items-center justify-center shadow-xl shadow-black/40 shadow-emerald-500/20" style="box-shadow: 0 0 32px rgba(16,185,129,.25)">
+            <!-- Placeholder initials -->
+            <span class="text-6xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent select-none">F</span>
+          </div>
+          <!-- Status badge -->
+          <div class="absolute -bottom-3 -right-3 flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-full px-3 py-1.5 shadow-lg">
+            <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse-slow"></span>
+            <span class="text-xs font-semibold text-slate-300">Available for work</span>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="grid grid-cols-3 gap-4 w-full max-w-xs">
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <div class="text-2xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">5+</div>
+            <div class="text-xs text-slate-500 mt-0.5">Years Exp.</div>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <div class="text-2xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">30+</div>
+            <div class="text-xs text-slate-500 mt-0.5">Projects</div>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <div class="text-2xl font-black bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">Go</div>
+            <div class="text-xs text-slate-500 mt-0.5">Primary</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right — Bio -->
+      <div>
+        <p class="text-[11px] font-bold tracking-[0.18em] text-emerald-400 uppercase mb-3">The Developer</p>
+        <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-50 mb-2">Fawaz</h2>
+        <p class="text-emerald-400 font-semibold text-lg mb-6">Software Engineer · Backend Developer</p>
+
+        <div class="space-y-4 text-slate-400 leading-relaxed mb-8">
+          <p>
+            I build fast, reliable backend systems and developer tools. Specialising in Go for high-performance services
+            — from concurrent network scrapers to REST APIs deployed on cloud platforms.
+          </p>
+          <p>
+            gofetch is an open-source project that scratches my own itch: a single binary that gives you a complete
+            network intelligence picture of any domain in under three seconds.
+          </p>
+        </div>
+
+        <!-- Skills grid -->
+        <div class="mb-8">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Tech Stack</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">
+              <svg class="w-3 h-3 text-cyan-400" viewBox="0 0 24 24" fill="currentColor"><path d="M1.811 10.231c-.047 0-.058-.023-.035-.059l.246-.315c.023-.035.081-.058.128-.058h4.172c.046 0 .058.035.035.07l-.199.303c-.023.036-.082.07-.117.07L1.81 10.23zM.047 11.306c-.047 0-.059-.023-.035-.058l.245-.316c.023-.035.082-.058.129-.058h5.328c.047 0 .07.035.058.07l-.093.28c-.012.047-.058.07-.105.07L.047 11.306zm2.828 1.075c-.047 0-.059-.035-.035-.07l.163-.292c.023-.035.07-.07.117-.07h2.337c.047 0 .07.035.07.082l-.023.28c0 .047-.047.082-.082.082l-2.547-.012zM19.78 10.196c-.736.187-1.239.327-1.963.514-.176.046-.187.058-.34-.117-.174-.199-.303-.327-.548-.444-.737-.362-1.45-.257-2.115.175-.795.514-1.204 1.274-1.192 2.22.011.935.654 1.706 1.577 1.835.795.105 1.46-.175 1.987-.771.105-.14.198-.292.315-.48H15.51c-.246 0-.304-.152-.221-.35.152-.362.432-.97.596-1.274a.315.315 0 0 1 .292-.187h4.253c-.023.316-.023.631-.07.947a4.983 4.983 0 0 1-.968 2.29c-.863 1.17-2.02 1.789-3.479 1.976-1.204.152-2.326-.07-3.33-.806-1.157-.843-1.822-1.976-1.987-3.387-.198-1.66.385-3.109 1.403-4.384.75-.933 1.694-1.557 2.87-1.847 1.002-.246 1.98-.199 2.913.269.619.316 1.122.771 1.449 1.379.094.14.047.21-.117.258"/></svg>
+              Go
+            </span>
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">
+              <svg class="w-3 h-3 text-yellow-400" viewBox="0 0 24 24" fill="currentColor"><path d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.83l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.23l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05L0 11.97l.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.24-.01h.16l.06.01h8.16v-.83H6.24l-.01-2.75-.02-.37.05-.34.11-.31.17-.28.25-.26.31-.23.38-.2.44-.18.51-.15.58-.12.64-.1.71-.06.77-.04.84-.02 1.27.05zm-6.3 11.83h.28l.22.05.19.09.15.14.13.2.07.27.02.34v3.46l-.02.34-.07.27-.13.2-.15.14-.19.09-.22.05-.28.02h-3.52l-.28-.02-.22-.05-.19-.09-.15-.14-.13-.2-.07-.27-.02-.34v-3.46l.02-.34.07-.27.13-.2.15-.14.19-.09.22-.05.28-.02h3.52zm9.54-7.36h.44l.53.03.5.07.42.11.33.13.25.15.18.17.11.2.07.22.04.25.02.26.01.27v3.48h-.01l-.01.27-.04.25-.07.22-.11.2-.18.17-.25.15-.33.13-.42.11-.5.07-.53.03h-.44l-.53-.03-.5-.07-.42-.11-.33-.13-.25-.15-.18-.17-.11-.2-.07-.22-.04-.25-.02-.26V9.78l.02-.26.04-.25.07-.22.11-.2.18-.17.25-.15.33-.13.42-.11.5-.07.53-.03h.44z"/></svg>
+              Python
+            </span>
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">
+              <svg class="w-3 h-3 text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M13.983 11.078h2.119a.186.186 0 0 0 .186-.185v-4.08a.186.186 0 0 0-.186-.186h-2.119a.185.185 0 0 0-.185.185v4.08c0 .102.083.185.185.186zm-2.954-5.43h2.118a.186.186 0 0 0 .186-.186V1.485a.186.186 0 0 0-.186-.186h-2.118a.185.185 0 0 0-.185.185v3.978c0 .102.082.185.185.185zm-1.862 5.43h2.118a.186.186 0 0 0 .186-.185v-4.08a.186.186 0 0 0-.186-.186H9.167a.185.185 0 0 0-.185.185v4.08c0 .102.082.185.185.186zm-2.954 0h2.118a.186.186 0 0 0 .186-.185v-4.08a.186.186 0 0 0-.186-.186H6.213a.185.185 0 0 0-.185.185v4.08c0 .102.082.185.185.186z"/></svg>
+              Docker
+            </span>
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">PostgreSQL</span>
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">REST APIs</span>
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">Linux</span>
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">Git</span>
+            <span class="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-300">Render / Cloud</span>
+          </div>
+        </div>
+
+        <!-- Experience highlights -->
+        <div class="space-y-3">
+          <div class="flex items-start gap-3 p-4 bg-slate-900 border border-slate-800 rounded-xl">
+            <div class="w-2 h-2 bg-emerald-400 rounded-full mt-1.5 flex-shrink-0"></div>
+            <div>
+              <p class="text-sm font-semibold text-slate-200">Backend Engineering</p>
+              <p class="text-xs text-slate-400 mt-0.5">Designing and building high-throughput APIs and services with Go.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-slate-900 border border-slate-800 rounded-xl">
+            <div class="w-2 h-2 bg-cyan-400 rounded-full mt-1.5 flex-shrink-0"></div>
+            <div>
+              <p class="text-sm font-semibold text-slate-200">Network Security & OSINT</p>
+              <p class="text-xs text-slate-400 mt-0.5">Building network intelligence tooling and open-source backend services.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-4 bg-slate-900 border border-slate-800 rounded-xl">
+            <div class="w-2 h-2 bg-violet-400 rounded-full mt-1.5 flex-shrink-0"></div>
+            <div>
+              <p class="text-sm font-semibold text-slate-200">Open Source</p>
+              <p class="text-xs text-slate-400 mt-0.5">Contributing to and building developer tools that solve real problems.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--  API SCANNER                                                         -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section id="scanner" class="py-24 bg-slate-950 relative overflow-hidden">
+  <div class="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-600/5 rounded-full blur-3xl pointer-events-none"></div>
+
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+
+    <!-- Header -->
+    <div class="text-center mb-12">
+      <p class="text-[11px] font-bold tracking-[0.18em] text-emerald-400 uppercase mb-3">Live Demo</p>
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-50 mb-4">Try the Scanner</h2>
+      <p class="text-slate-400 max-w-xl mx-auto leading-relaxed">
+        Enter any domain below and hit Scan. The request hits the <code class="text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-sm font-mono">/api/scan</code> endpoint
+        and redirects to the interactive scan details dashboard.
+      </p>
+    </div>
+
+    <!-- Input card -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-4">
+      <div class="flex flex-col sm:flex-row gap-3">
+        <div class="flex-1 flex items-center gap-3 bg-slate-950 border border-slate-700 rounded-xl px-4 focus-within:border-emerald-500/60 focus-within:ring-2 focus-within:ring-emerald-500/10 transition-all">
+          <svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35" stroke-linecap="round"/>
+          </svg>
+          <input
+            id="domain-input"
+            type="text"
+            placeholder="e.g. github.com  or  8.8.8.8"
+            class="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder:text-slate-600 text-sm font-mono py-3.5 min-w-0"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          />
+        </div>
+        <button
+          id="scan-btn"
+          onclick="startScan()"
+          class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-7 py-3.5 rounded-xl text-sm transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-px active:translate-y-0 select-none px-7 py-3.5 text-sm justify-center flex-shrink-0"
+        >
+          <svg id="btn-icon-scan" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
+          <svg id="btn-icon-spin" class="w-4 h-4 animate-spin hidden" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          <span id="btn-text">Scan Target</span>
+        </button>
+      </div>
+      <!-- Hint -->
+      <p class="text-xs text-slate-650 mt-3 font-mono">
+        Press <kbd class="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-400 font-mono">Enter</kbd> to scan &nbsp;·&nbsp;
+        Interactive dashboard opens automatically
+      </p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--  FOOTER                                                              -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<footer class="border-t border-slate-800 bg-slate-950">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-slate-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
+        <span class="font-bold text-slate-300 text-sm">gofetch</span>
+        <span class="text-slate-700 text-sm">·</span>
+        <span class="text-slate-500 text-xs">Open Source Network Intelligence Toolkit</span>
+      </div>
+
+      <div class="flex items-center gap-6 text-xs text-slate-500">
+        <a href="#home"     class="hover:text-slate-400 transition-colors">Home</a>
+        <a href="#services" class="hover:text-slate-400 transition-colors">Services</a>
+        <a href="#about"    class="hover:text-slate-400 transition-colors">About</a>
+        <a href="#scanner"  class="hover:text-slate-400 transition-colors">Scanner</a>
+      </div>
+
+      <p class="text-xs text-slate-700 font-mono">Built with Go &amp; ❤️ · Deployed on Render</p>
+    </div>
+  </div>
+</footer>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!--  JAVASCRIPT                                                          -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<script>
+  /* ── Navbar scroll effect ─────────────────────────────────────────────── */
+  const navbar = document.getElementById('navbar');
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 20) {
+      navbar.classList.add('bg-slate-950/95', 'backdrop-blur-md', 'border-b', 'border-slate-800/60', 'shadow-lg', 'shadow-black/20');
+    } else {
+      navbar.classList.remove('bg-slate-950/95', 'backdrop-blur-md', 'border-b', 'border-slate-800/60', 'shadow-lg', 'shadow-black/20');
+    }
+  }, { passive: true });
+
+  /* ── Mobile menu ──────────────────────────────────────────────────────── */
+  const menuBtn   = document.getElementById('menu-btn');
+  const mobileMenu = document.getElementById('mobile-menu');
+  const iconOpen  = document.getElementById('icon-open');
+  const iconClose = document.getElementById('icon-close');
+
+  menuBtn.addEventListener('click', () => {
+    const open = mobileMenu.classList.toggle('hidden');
+    iconOpen.classList.toggle('hidden',  !open);
+    iconClose.classList.toggle('hidden', open);
+    menuBtn.setAttribute('aria-expanded', String(!open));
+  });
+
+  function closeMobileMenu() {
+    mobileMenu.classList.add('hidden');
+    iconOpen.classList.remove('hidden');
+    iconClose.classList.add('hidden');
+    menuBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  /* ── Enter key for scanner input ─────────────────────────────────────── */
+  document.getElementById('domain-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startScan();
+  });
+
+  /* ── Quick scan execution ─────────────────────────────────────────────── */
+  function startScan() {
+    const domain = document.getElementById('domain-input').value.trim();
+    if (!domain) { flashInput(); return; }
+    window.location.href = `/scan.html?domain=${encodeURIComponent(domain)}`;
+  }
+
+  function flashInput() {
+    const input = document.getElementById('domain-input').parentElement;
+    input.classList.add('border-red-500/60', 'ring-2', 'ring-red-500/10');
+    setTimeout(() => input.classList.remove('border-red-500/60', 'ring-2', 'ring-red-500/10'), 900);
+  }
+</script>
+</body>
+</html>
